@@ -32,32 +32,18 @@ async def upload_file(file: UploadFile = File(...)):
     allowed_types = ["application/pdf", "image/png", "image/jpeg"]
     if file.content_type not in allowed_types:
         raise HTTPException(status_code=400, detail="Only PDF, PNG, JPEG files allowed")
-
     file_path = os.path.join(UPLOAD_DIR, file.filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-
     extracted_text = ""
     chunks = []
     embeddings = []
-    
-    # Process if the uploaded file is a PDF
     if file.content_type == "application/pdf":
-        # 1. Extract text
         extracted_text = ai_service.pdf_text_extractor(file_path)
-        
-        # 2. Chunk text
         if extracted_text.strip():
             chunks = ai_service.pdf_chunker(extracted_text)
-        
-        for chunk in chunks:
-            embedding = ai_service.embed_text(chunk)
-            embeddings.append(embedding)
-            
-        chromaDB.store_in_database(chunks, embeddings, file.filename)
-
-            
-
+            embeddings = ai_service.embed_batch(chunks)
+            chromaDB.store_in_database(chunks, embeddings, file.filename)
     return {
         "message": "File uploaded successfully",
         "filename": file.filename,

@@ -4,6 +4,7 @@ import os
 import google.generativeai as genai
 from dotenv import load_dotenv
 import re
+import cohere
 
 # Load variables from .env file into the environment
 load_dotenv()
@@ -18,19 +19,9 @@ class AI_Service:
         )
 
     def clean_text(self, text: str) -> str:
-        """
-        Removes unnecessary noise, extra whitespaces, and unprintable characters from text.
-        """
-        # Remove non-printable characters (keep standard ASCII and common punctuation)
         text = re.sub(r'[^\x00-\x7F]+', ' ', text)
-        
-        # Replace multiple newlines with a single newline
         text = re.sub(r'\n+', '\n', text)
-        
-        # Replace multiple spaces with a single space
         text = re.sub(r'[ \t]+', ' ', text)
-        
-        # Remove standalone page numbers (e.g., a line with just "12" or "- 12 -")
         text = re.sub(r'(?m)^\s*-?\s*\d+\s*-?\s*$', '', text)
         
         return text.strip()
@@ -47,18 +38,24 @@ class AI_Service:
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=3000,
             chunk_overlap=500,
-            length_function=len
+            length_function=len,
+            separators=["\n\n", "\n", ".", "?", "!", ",", " ", ""]
         )
         return self.text_splitter.split_text(text)
 
-    def embed_text(self, text_chunk: str) -> list[float]:
-        genai.configure(api_key=os.environ.get("GOOGLE_GEMINI_API_KEY"))
-        result = genai.embed_content(
-            model="models/gemini-embedding-001",
-            content=text_chunk,
-            task_type="retrieval_document"
+    co = cohere.ClientV2(
+        api_key=os.environ.get("COHERE_API_KEY")
+    ) 
+    def embed_batch(self, text_chunks: list[str]) -> list[list[float]]:
+        response = self.co.embed(
+            texts=text_chunks,
+            model="embed-english-v3.0",
+            input_type="search_document",
+            embedding_types=["float"]
         )
-        return result["embedding"]
+        
+        return response.embeddings.float
+
 
     def query_database(self, query):
         """
