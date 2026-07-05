@@ -1,7 +1,19 @@
+# Web Framework & Server
 fastapi
-uvicorn[standard]
+uvicorn
 python-multipart
-pydantic
+
+# Environment Variables
+python-dotenv
+
+# Database & GUI
 chromadb
+chromadb-admin
+
+# AI Models & LangChain
+langchain
+langchain-community
+langchain-text-splitters
 pypdf
 google-generativeai
+cohere
