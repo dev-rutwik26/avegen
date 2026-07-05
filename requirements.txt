@@ -16,4 +16,4 @@ langchain-community
 langchain-text-splitters
 pypdf
 google-generativeai
-cohere
+huggingface_hub
