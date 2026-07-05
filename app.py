@@ -59,8 +59,7 @@ def token_generator(question: str, sources_ref: list):
 # ── Page config ───────────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="HVAC Support Portal",
-    page_icon="🏭",
+    page_title="Avegen assignment",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -176,7 +175,7 @@ def page_login():
     with col_m:
         st.markdown("""
         <div style='text-align:center; margin-bottom:15px; margin-top:5px;'>
-            <div class='hero-title' style='font-size:2.2rem;'>HVAC <span>Support</span> Portal</div>
+            <div class='hero-title' style='font-size:2.2rem;'>Avegen <span>Assignment</span></div>
             <div class='hero-sub' style='font-size:0.9rem; margin-bottom:15px;'>Industrial Heating & Cooling Intelligence Platform</div>
         </div>
         """, unsafe_allow_html=True)
