@@ -1,11 +1,8 @@
 import chromadb
-# Persistent client — saves data to ./chroma_db folder on disk
 client = chromadb.PersistentClient(path="./chroma_db")
-
-# Create or load a collection (like a table in SQL)
 collection = client.get_or_create_collection(
     name="hvac_docs",
-    metadata={"hnsw:space": "cosine"}  # use cosine similarity
+    metadata={"hnsw:space": "cosine"}  
 )
 
 def store_in_database( chunks: list[str], embeddings: list[list[float]], pdf_name: str):        
@@ -18,28 +15,23 @@ def store_in_database( chunks: list[str], embeddings: list[list[float]], pdf_nam
     try:
         admin_client.create_tenant("avegen_assignment")
     except Exception:
-        pass # Tenant already exists
+        pass 
         
     try:
         admin_client.create_database("knowledge_base", tenant="avegen_assignment")
     except Exception:
-        pass # Database already exists
-
-    # 2. Connect to our specific tenant and database
+        pass 
     client = chromadb.HttpClient(
         host="localhost", 
         port=8000, 
         tenant="avegen_assignment", 
         database="knowledge_base"
     )
-
-    # 3. Create or get the collection
     collection = client.get_or_create_collection(
         name="hvac_manuals",
-        metadata={"hnsw:space": "cosine"} # Cosine similarity for semantic search
+        metadata={"hnsw:space": "cosine"} 
     )
 
-    # 4. Prepare data and insert
     ids = [f"{pdf_name}_chunk_{i}" for i in range(len(chunks))]
     metadatas = [{"pdf_name": pdf_name, "text": chunk} for chunk in chunks]
 

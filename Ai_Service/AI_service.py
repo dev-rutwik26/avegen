@@ -4,7 +4,7 @@ import os
 import google.generativeai as genai
 from dotenv import load_dotenv
 import re
-import cohere
+from huggingface_hub import InferenceClient
 
 # Load variables from .env file into the environment
 load_dotenv()
@@ -43,18 +43,20 @@ class AI_Service:
         )
         return self.text_splitter.split_text(text)
 
-    co = cohere.ClientV2(
-        api_key=os.environ.get("COHERE_API_KEY")
-    ) 
+    hf_client = InferenceClient(
+        provider="hf-inference",
+        api_key=os.environ.get("HUGGINGFACE_API_KEY"),
+    )
+
     def embed_batch(self, text_chunks: list[str]) -> list[list[float]]:
-        response = self.co.embed(
-            texts=text_chunks,
-            model="embed-english-v3.0",
-            input_type="search_document",
-            embedding_types=["float"]
-        )
-        
-        return response.embeddings.float
+        embeddings = []
+        for chunk in text_chunks:
+            result = self.hf_client.feature_extraction(
+                chunk,
+                model="google/embeddinggemma-300m",
+            )
+            embeddings.append(result[0])
+        return embeddings
 
 
     def query_database(self, query):
