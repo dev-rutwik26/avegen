@@ -5,8 +5,8 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 import re
 from huggingface_hub import InferenceClient
-
-# Load variables from .env file into the environment
+import chromadb
+from openai import OpenAI
 load_dotenv()
 
 class AI_Service:
@@ -47,7 +47,10 @@ class AI_Service:
         provider="hf-inference",
         api_key=os.environ.get("HUGGINGFACE_API_KEY"),
     )
-
+    client = OpenAI(
+        base_url= "https://router.huggingface.co/v1",
+        api_key=os.environ.get("HUGGINGFACE_API_KEY"),
+    )
     def embed_batch(self, text_chunks: list[str]) -> list[list[float]]:
         embeddings = []
         for chunk in text_chunks:
@@ -55,12 +58,48 @@ class AI_Service:
                 chunk,
                 model="google/embeddinggemma-300m",
             )
-            embeddings.append(result[0])
+            # Append the ENTIRE result (converted to standard floats), not just result[0]
+            embeddings.append([float(val) for val in result])
         return embeddings
 
 
-    def query_database(self, query):
-        """
-        Left empty as requested.
-        """
-        pass
+    def query_database(self,query_embedding: list[float], n_results: int = 3) -> list[str]:
+        client = chromadb.HttpClient(
+            host="localhost", 
+            port=8000, 
+            tenant="avegen_assignment", 
+            database="knowledge_base"
+        )
+        
+        collection = client.get_collection(name="hvac_manuals")
+        
+        results = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=n_results
+        )
+        
+        # Return the text of the matched chunks
+        if results and "documents" in results and results["documents"]:
+            return results["documents"][0]
+        return []
+
+    def ask_llm(self, user_query: str, context_chunks: list[str]) -> str:
+            context_text = "\n\n---\n\n".join(context_chunks)
+            
+            prompt = f"""You are a helpful industrial HVAC technician assistant. 
+    Answer the user's question using ONLY the provided context below. If the answer is not in the context, say "I don't have enough information to answer that."
+
+    Context:
+    {context_text}
+
+    Question: {user_query}
+    Answer:"""
+            response = self.client.chat.completions.create(
+                model="deepseek-ai/DeepSeek-V3.2-Exp:novita", 
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=5000
+            )
+
+            return response.choices[0].message.content
+
+

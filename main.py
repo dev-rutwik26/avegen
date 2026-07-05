@@ -4,29 +4,22 @@ import shutil
 import os
 from Ai_Service.AI_service import AI_Service
 import chromaDB
-
+from pydantic import BaseModel
+class QueryRequest(BaseModel):
+    question: str
 ai_service = AI_Service()
-
-
-
 app = FastAPI(title="HVAC Support Portal API")
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-
 # ── Health Check ──────────────────────────────────────────────────────────────
-
 @app.get("/health")
 def health_check():
     return {
         "status": "ok",
         "message": "HVAC API is running",
     }
-
-
 # ── File Upload + Ingest ──────────────────────────────────────────────────────
-
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     allowed_types = ["application/pdf", "image/png", "image/jpeg"]
@@ -50,6 +43,28 @@ async def upload_file(file: UploadFile = File(...)):
         "content_type": file.content_type,
         "chunk_count": len(chunks),
         "embeddings_created": len(embeddings)
+    }
+
+
+@app.post("/chat")
+async def chat_with_bot(request: QueryRequest):
+    # 1. Turn the user's question into an embedding
+    # (We wrap it in a list because our function expects a batch list, then take the 0th result)
+    question_embedding = ai_service.embed_batch([request.question])[0]
+    
+    # 2. Search ChromaDB for the 3 most relevant text chunks
+    relevant_chunks = ai_service.query_database(question_embedding, n_results=3)
+    
+    if not relevant_chunks:
+        return {"answer": "No relevant documents found. Please upload a manual first!"}
+    
+    # 3. Send the chunks and the question to the LLM
+    llm_response = ai_service.ask_llm(request.question, relevant_chunks)
+    
+    return {
+        "question": request.question,
+        "answer": llm_response,
+        "sources": relevant_chunks # So the technician can see where the answer came from
     }
 
 
