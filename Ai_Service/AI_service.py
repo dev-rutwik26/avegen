@@ -7,15 +7,25 @@ import re
 from huggingface_hub import InferenceClient
 import chromadb
 from openai import OpenAI
+from typing import Generator
+
+# Load variables from .env file into the environment
 load_dotenv()
 
 class AI_Service:
     def __init__(self):
-        # Configure text splitter: 500 char chunks with 50 overlap
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=3500,
             chunk_overlap=500,
             length_function=len
+        )
+        self.hf_client = InferenceClient(
+            provider="hf-inference",
+            api_key=os.environ.get("HUGGINGFACE_API_KEY"),
+        )
+        self.openai_client = OpenAI(
+            base_url="https://router.huggingface.co/v1",
+            api_key=os.environ.get("HUGGINGFACE_API_KEY"),
         )
 
     def clean_text(self, text: str) -> str:
@@ -23,7 +33,6 @@ class AI_Service:
         text = re.sub(r'\n+', '\n', text)
         text = re.sub(r'[ \t]+', ' ', text)
         text = re.sub(r'(?m)^\s*-?\s*\d+\s*-?\s*$', '', text)
-        
         return text.strip()
 
     def pdf_text_extractor(self, pdf_path: str) -> str:
@@ -32,7 +41,6 @@ class AI_Service:
         full_text = "\n".join([doc.page_content for doc in docs])
         cleaned_text = self.clean_text(full_text)
         return cleaned_text
-
 
     def pdf_chunker(self, text: str) -> list[str]:
         self.text_splitter = RecursiveCharacterTextSplitter(
@@ -43,14 +51,6 @@ class AI_Service:
         )
         return self.text_splitter.split_text(text)
 
-    hf_client = InferenceClient(
-        provider="hf-inference",
-        api_key=os.environ.get("HUGGINGFACE_API_KEY"),
-    )
-    client = OpenAI(
-        base_url= "https://router.huggingface.co/v1",
-        api_key=os.environ.get("HUGGINGFACE_API_KEY"),
-    )
     def embed_batch(self, text_chunks: list[str]) -> list[list[float]]:
         embeddings = []
         for chunk in text_chunks:
@@ -58,48 +58,69 @@ class AI_Service:
                 chunk,
                 model="google/embeddinggemma-300m",
             )
-            # Append the ENTIRE result (converted to standard floats), not just result[0]
             embeddings.append([float(val) for val in result])
         return embeddings
 
-
-    def query_database(self,query_embedding: list[float], n_results: int = 3) -> list[str]:
+    def query_database(self, query_embedding: list[float], n_results: int = 3) -> list[str]:
         client = chromadb.HttpClient(
-            host="localhost", 
-            port=8000, 
-            tenant="avegen_assignment", 
+            host="localhost",
+            port=8000,
+            tenant="avegen_assignment",
             database="knowledge_base"
         )
-        
         collection = client.get_collection(name="hvac_manuals")
-        
         results = collection.query(
             query_embeddings=[query_embedding],
             n_results=n_results
         )
-        
-        # Return the text of the matched chunks
         if results and "documents" in results and results["documents"]:
             return results["documents"][0]
         return []
 
     def ask_llm(self, user_query: str, context_chunks: list[str]) -> str:
-            context_text = "\n\n---\n\n".join(context_chunks)
-            
-            prompt = f"""You are a helpful industrial HVAC technician assistant. 
-    Answer the user's question using ONLY the provided context below. If the answer is not in the context, say "I don't have enough information to answer that."
+        context_text = "\n\n---\n\n".join(context_chunks)
+        prompt = f"""You are a helpful industrial HVAC technician assistant.
+Answer the user's question using ONLY the provided context below. If the answer is not in the context, say "I don't have enough information to answer that."
 
-    Context:
-    {context_text}
+Context:
+{context_text}
 
-    Question: {user_query}
-    Answer:"""
-            response = self.client.chat.completions.create(
-                model="deepseek-ai/DeepSeek-V3.2-Exp:novita", 
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=5000
-            )
+Question: {user_query}
+Answer:"""
+        response = self.openai_client.chat.completions.create(
+            model="deepseek-ai/DeepSeek-V3-0324",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1000
+        )
+        return response.choices[0].message.content
 
-            return response.choices[0].message.content
+    def ask_llm_stream(self, user_query: str, context_chunks: list[str]) -> Generator[str, None, None]:
+        """
+        Streams the LLM response token by token.
+        Yields each token as a Server-Sent Event string.
+        """
+        context_text = "\n\n---\n\n".join(context_chunks)
+        prompt = f"""You are a helpful industrial HVAC technician assistant.
+Answer the user's question using ONLY the provided context below. If the answer is not in the context, say "I don't have enough information to answer that."
 
+Context:
+{context_text}
 
+Question: {user_query}
+Answer:"""
+        stream = self.openai_client.chat.completions.create(
+            model="deepseek-ai/DeepSeek-V3-0324",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1000,
+            stream=True
+        )
+        for chunk in stream:
+            # Guard: some chunks arrive with empty choices (e.g. final usage chunk)
+            if not chunk.choices:
+                continue
+            token = chunk.choices[0].delta.content
+            if token:
+                # Format as SSE: "data: <token>\n\n"
+                yield f"data: {token}\n\n"
+        # Signal end of stream
+        yield "data: [DONE]\n\n"

@@ -6,6 +6,10 @@ python-multipart
 # Environment Variables
 python-dotenv
 
+# Frontend
+streamlit
+requests
+
 # Database & GUI
 chromadb
 chromadb-admin
@@ -16,4 +20,6 @@ langchain-community
 langchain-text-splitters
 pypdf
 google-generativeai
+cohere
+openai
 huggingface_hub
