@@ -3,6 +3,7 @@ from pydantic import BaseModel
 import shutil
 import os
 from Ai_Service.AI_service import AI_Service
+import chromaDB
 
 ai_service = AI_Service()
 
@@ -48,13 +49,14 @@ async def upload_file(file: UploadFile = File(...)):
         # 2. Chunk text
         if extracted_text.strip():
             chunks = ai_service.pdf_chunker(extracted_text)
+        
+        for chunk in chunks:
+            embedding = ai_service.embed_text(chunk)
+            embeddings.append(embedding)
             
-            # 3. Create embeddings for each chunk
-            for chunk in chunks:
-                embedding = ai_service.embed_text(chunk)
-                embeddings.append(embedding)
-                
-            # TODO: Here is where you will add these chunks and embeddings to ChromaDB
+        chromaDB.store_in_database(chunks, embeddings, file.filename)
+
+            
 
     return {
         "message": "File uploaded successfully",
